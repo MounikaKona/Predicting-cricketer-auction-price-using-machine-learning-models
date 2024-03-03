@@ -1,0 +1,192 @@
+library(GGally)
+library(caTools)
+library(ggplot2)
+library(corrplot)
+library(tidyverse)
+library(glmnet)
+library(caret)
+library(randomForest)
+library(ggcorrplot)
+library(cluster)
+library(factoextra)
+library(e1071)
+
+
+#Import data
+
+data<- read.csv("C:\\Users\\Eswar\\Documents\\Latha\\sprin2023\\class\\STAT\\Final_project\\Finalfiles\\cricket_dataset.csv") 
+names(data)
+str(data)
+
+#DATA PRE PROCESSING
+
+#Convert price to USD
+data$PRICE.PAID <- data$PRICE.PAID / 80
+
+# the column HS has a special character * and also the datatype is char, needs to be changed to integer.
+unique(data$HS)
+data$HS = gsub("\\*", "", data$HS)
+data$HS = as.numeric(data$HS)
+
+#data$Player
+#Remove duplicates
+data = data[!duplicated(data$Player),]
+row.names(data) = data$Player
+
+#Check for negative values
+neg_values <- filter(data, PRICE.PAID < 0)
+
+#Remove unwanted columns
+data$Player = NULL
+data$X.1 = NULL
+data$X = NULL
+data$RpNB = NULL
+data$Inn = NULL
+
+#Rounding the values to nearest whole number
+data$ABP <- as.integer(round(data$ABP))
+
+#Rename columns 
+data <- data %>% rename(Price = PRICE.PAID, Nof100s = X100, Nof50s = X50, Nof4s = X4s, 
+                        Nof6s = X6s, Nof0s = X0, Nof30s = X30)
+#DATA VISUALISATIONS
+
+# Define a function for creating histograms of numeric columns
+create_histograms = function(data) {
+  # Create histograms of the numeric columns
+  par(mar = c(2,2,2,2))
+  par(mfrow = c(6, 4))
+  for (col in c("Runs", "Ave", "Balls", "SR", "Nof100s", "Nof50s",
+                "Nof30s", "Nof0s", "Nof4s", "Nof6s", "BpB", "Bp4", "Bp6",
+                "PrB", "Pr4", "Pr6", "BBP", "RpB", "RpI",
+                "BpI", "ABP", "Price")) {
+    hist(data[[col]], main = col)
+  }}
+
+create_histograms(data=data)
+create_boxplot = function(data){
+  par(mfrow = c(6, 4))
+  par(mar = c(2,2,2,2))
+  for (col in c("Runs", "Ave", "Balls", "SR", "Nof100s", "Nof50s", "Nof30s",
+                "Nof0s", "Nof4s", "Nof6s", "BpB", "Bp4", "Bp6", "PrB", "Pr4",
+                "Pr6", "BBP", "RpB", "RpI", "BpI",
+                "ABP", "Price")) {
+    
+    boxplot(data[[col]], main = col, horizontal = TRUE)
+  }
+}
+create_boxplot(data=data)
+
+# Compute the correlation matrix
+create_heatmap = function(data){
+  corr_matrix <- cor(data[, c("Runs", "Ave", "Balls", "SR",
+                              "Nof100s", "Nof50s", "Nof30s", "Nof0s", "Nof4s",
+                              "Nof6s", "BpB", "Bp4", "Bp6", "PrB",
+                              "Pr4", "Pr6", "BBP", "RpB",
+                              "RpI", "BpI", "ABP", "Price")])
+  dev.new(width = 10, height = 10)
+  
+  ggcorrplot(corr_matrix, type = "upper", hc.order = TRUE, 
+             ggtheme = ggplot2::theme_gray, colors = c("#6D9EC1", "white", "#E46726"))
+  
+  
+}
+
+create_heatmap(data=data)
+vars <- colnames(data)[-26]
+# Create a scatter plot matrix
+pairs(data[, vars], main = "Scatter Plot Matrix")
+# Add a correlation table to the plot
+cor_table <- round(cor(data[, vars]), 2)
+corrplot(cor_table, type = "upper", tl.col = "black", tl.srt = 45, diag = FALSE)
+
+
+#1st objective
+
+select_features= function(data)
+{
+  set.seed(123)
+  trainIndex <- createDataPartition(data$Price, p = .8, list = FALSE, times = 1)
+  training_data <- data[trainIndex, ]
+  testing_data <- data[-trainIndex, ]
+  x_train <- as.matrix(training_data[, -which(names(training_data) == "Price")])
+  #norm_x_train = scale(x_train)
+  y_train <- training_data$Price
+  
+  rf_model <- randomForest(x = x_train, y = y_train, importance = TRUE)
+  #plot(rf_model)
+  print(importance(rf_model))
+  par(mar = c(5, 5, 3, 3))
+  dev.new(width = 10, height = 10)
+  varImpPlot(rf_model)
+  #dev.off()
+  
+  rf_pred <- predict(rf_model, newdata = x_train)
+  
+  # Calculate MSE
+  mse <- function(predicted, actual) {
+    mean((predicted - actual)^2)
+  }
+  rf_mse <- mse(rf_pred, y_train)
+  #calculate r2 and rmse
+  rf_rsq <- R2(rf_pred, y_train)
+  rf_rmse <- RMSE(rf_pred, y_train)
+}
+select_features(data)
+#3rd objective
+
+classification = function(data)
+{
+  data$performance = ifelse(data$Basra >= 150, 1,0)
+  
+  # Split the data into training and testing sets
+  set.seed(123) # for reproducibility
+  training.index <- createDataPartition(data$performance, p = 0.7, list = FALSE)
+  training <- data[training.index, ]
+  testing <- data[-training.index, ]
+  
+  training$performance <- factor(training$performance)
+  testing$performance <- factor(testing$performance)
+  
+  # Train a Naive Bayes model
+  model <- naiveBayes(performance ~ Basra, data = training)
+  
+  # Make predictions on the testing set
+  predictions <- predict(model, newdata = testing)
+  
+  # Evaluate the model performance using a confusion matrix
+  confusionMatrix(predictions, testing$performance)
+}
+classification(data)
+
+
+#4th Objective
+
+clusters = function(data)
+{
+  # Load the data and select the Abp column
+  ABP <- data$ABP
+  
+  # Use k-means clustering to create three clusters based on Abp
+  kmeans_fit <- kmeans(ABP, centers = 3, nstart = 20)
+  cluster_ids <- kmeans_fit$cluster
+  
+  # Assign players to different groups based on their cluster assignment
+  top_order <- data$Player[cluster_ids == 1]
+  middle_order <- data$Player[cluster_ids == 2]
+  tailenders <- data$Player[cluster_ids == 3]
+  
+  ggplot(data, aes(x = ABP, y = Price, color = factor(cluster_ids))) +
+    geom_point(size = 3) +
+    labs(title = "K-means Clustering of Players based on Average batting position and Price",
+         x = "Type of batter", y = "Price", color = "Cluster") +
+    scale_color_discrete(name = "Cluster", labels = c("Top Order Batsman", "Middle Order Batsman", "Tailenders"))
+  
+  df <- data.frame(ABP = data$ABP, Price = data$Price)
+  kmeans_fit <- kmeans(df, centers = 4, nstart = 20)
+  fviz_cluster(kmeans_fit, data = df, geom = "point", stand = FALSE,
+               main = "K-means Clustering of Cricket Players based on Average Batting Position and Price")
+}
+clusters(data)
+
+```
