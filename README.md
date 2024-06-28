@@ -3,8 +3,8 @@
 
 In this project various machine learning models were developed to predict the cricketer's auction price in IPL. The dataset has 1000 observations and 27 variables that includes statistics of batting performance of a player.
 Data preprocessing and exploratory data analysis was performed and created visualizations such as heatmap, boxplot and, histogram.
-Utilized random forest algorith to perform feature selection that best determines the cricketer's auction price.
-To predict the cricketer's auction price models such as random forest, ridge regression, lasso regression was developed and tested.
+Utilized random forest algorithm to perform feature selection that best determines the cricketer's auction price.
+Developed models such as random forest, ridge regression, lasso regression.
 Naïve bayes model was used to classify the players into best and moderate batsmen.
 To understand the relationship between player's average batting position and auction price in IPL, K-means clustering model was developed.
 
